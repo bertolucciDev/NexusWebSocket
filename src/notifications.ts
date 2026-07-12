@@ -10,11 +10,7 @@ interface AuthPayload {
   username: string;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
-}
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 const userIdToSockets = new Map<string, Set<string>>();
 let ioRef: Server | null = null;
@@ -27,7 +23,7 @@ export function setupNotifications(io: Server) {
 
     socket.on('auth', (data: { token: string }) => {
       try {
-        const payload = jwt.verify(data.token, JWT_SECRET) as unknown as AuthPayload;
+        const payload = jwt.verify(data.token, JWT_SECRET!) as unknown as AuthPayload;
         userId = payload.userId;
         const set = userIdToSockets.get(userId) || new Set();
         set.add(socket.id);
