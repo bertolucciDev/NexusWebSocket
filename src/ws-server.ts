@@ -2,7 +2,9 @@
  * Servidor dedicado para WebSocket (Socket.IO).
  * Hospedado separadamente (Render) porque Vercel Serverless nao suporta WebSocket.
  *
- * Apenas emite notificacoes em tempo real. Nao expone APIs REST.
+ * Expõe:
+ * - Socket.IO para clientes launchers (mesma origem permitidas)
+ * - HTTP POST /emit para a REST API (Vercel) emitir eventos server-side
  */
 if (!process.env.VERCEL) {
   require('dotenv').config();
@@ -13,9 +15,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { setupNotifications } from './notifications';
+import { setupNotifications, emitToUser } from './notifications';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const EMIT_API_KEY = process.env.EMIT_API_KEY || '';
+
+if (!EMIT_API_KEY) {
+  console.warn('[nexus-ws] EMIT_API_KEY not set! /emit endpoint will reject all requests.');
+}
 
 const allowedOriginPatterns: RegExp[] = [
   /^https:\/\/backend-.*\.vercel\.app$/,
@@ -43,9 +50,31 @@ app.use(cors({
   credentials: true,
 }));
 
+// JSON body parser for /emit
+app.use(express.json({ limit: '16kb' }));
+
 // Healthcheck (Render pinga para manter o servico acordado)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Endpoint para a REST API (Vercel) emitir eventos para usuarios conectados
+// POST /emit
+// Headers: X-Emit-Key: <EMIT_API_KEY>
+// Body: { userId, event, data }
+app.post('/emit', (req, res) => {
+  const key = req.headers['x-emit-key'];
+  if (!EMIT_API_KEY || key !== EMIT_API_KEY) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+  const { userId, event, data } = req.body || {};
+  if (!userId || !event || typeof data === 'undefined') {
+    res.status(400).json({ success: false, error: 'userId, event, data are required' });
+    return;
+  }
+  const delivered = emitToUser(userId, event, data);
+  res.json({ success: true, delivered });
 });
 
 const httpServer = createServer(app);

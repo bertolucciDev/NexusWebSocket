@@ -12,4 +12,6 @@ services:
         value: production
       - key: JWT_SECRET
         sync: false
+      - key: EMIT_API_KEY
+        sync: false
     region: oregon
